@@ -2,43 +2,38 @@ from flask import Flask, request, jsonify
 from openai import OpenAI
 import os
 
-
 app = Flask(__name__)
 
-
-# OpenAI 클라이언트 생성 (환경변수 OPENAI_API_KEY 필요)
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
+def get_client():
+    api_key = os.getenv("OPENAI_API_KEY", "").strip()
+    if not api_key:
+        raise RuntimeError("OPENAI_API_KEY not set")
+    return OpenAI(api_key=api_key)
 
 @app.route("/ask", methods=["POST"])
 def ask_gpt():
-  data = request.get_json()
-  question = data.get("question")
+    data = request.get_json()
+    question = data.get("question")
 
+    if not question:
+        return jsonify({"error": "question is required"}), 400
 
-  if not question:
-    return jsonify({"error": "question is required"}), 400
+    client = get_client()
 
+    response = client.chat.completions.create(
+        model="gpt-4.1-mini",
+        messages=[
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": question}
+        ]
+    )
 
-  response = client.chat.completions.create(
-  model="gpt-4.1-mini",
-  messages=[
-  {"role": "system", "content": "You are a helpful assistant."},
-  {"role": "user", "content": question}
-  ]
-  )
-
-
-  answer = response.choices[0].message.content
-
-
-  return jsonify({"answer": answer})
-
+    answer = response.choices[0].message.content
+    return jsonify({"answer": answer})
 
 @app.route("/")
 def index():
-  return '''
-<!DOCTYPE html>
+    return """<!DOCTYPE html>
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
@@ -55,31 +50,26 @@ button { padding: 10px 20px; margin-top: 10px; }
 <textarea id="question" placeholder="질문을 입력하세요"></textarea><br>
 <button onclick="askGPT()">질문하기</button>
 
-
 <div id="answer"></div>
-
 
 <script>
 async function askGPT() {
-const question = document.getElementById('question').value;
-document.getElementById('answer').innerText = '답변 생성 중...';
+  const question = document.getElementById('question').value;
+  document.getElementById('answer').innerText = '답변 생성 중...';
 
+  const response = await fetch('/ask', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ question })
+  });
 
-const response = await fetch('/ask', {
-method: 'POST',
-headers: { 'Content-Type': 'application/json' },
-body: JSON.stringify({ question })
-});
-
-
-const data = await response.json();
-document.getElementById('answer').innerText = data.answer || data.error;
+  const data = await response.json();
+  document.getElementById('answer').innerText = data.answer || data.error;
 }
 </script>
 </body>
-</html>
-'''
-
+</html>"""
 
 if __name__ == "__main__":
-  app.run(host="0.0.0.0", port=5000, debug=True)
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
